@@ -25,12 +25,30 @@
   (interactive)
   (setq slime-repl-ansi-color nil))
 
-(defadvice slime-repl-emit (around slime-repl-ansi-colorize activate compile)
+(defun slime-repl-ansi-color-clear ()
+  (interactive)
+  ;; ansi-color caches last position sometimes, so make sure it gets
+  ;; reset when buffer is cleared
+  (setf ansi-color-context-region nil))
+
+(add-hook 'slime-repl-clear-buffer-hook 'slime-repl-ansi-color-clear)
+
+(defun slime-repl-emit--ansi-colorize (original string)
   (with-current-buffer (slime-output-buffer)
     (let ((start slime-output-start))
-      (setq ad-return-value ad-do-it)
-      (when slime-repl-ansi-color
-        (ansi-color-apply-on-region start slime-output-end)))))
+      (prog1
+          ;; cached marker gets moved when slime inserts text, so
+          ;; put it back where it was
+          (if (markerp (cadr ansi-color-context-region))
+              (slime-save-marker (cadr ansi-color-context-region)
+                 (funcall original string))
+              (funcall original string))
+        (when slime-repl-ansi-color
+          (ansi-color-apply-on-region start slime-output-end
+                                      ;; not sure if this should keep
+                                      ;; the escape sequences or not?
+                                      nil))))))
 
+(advice-add 'slime-repl-emit :around #'slime-repl-emit--ansi-colorize)
 
 (provide 'slime-repl-ansi-color)
